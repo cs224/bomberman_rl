@@ -79,10 +79,17 @@ But also this special case of batch re-learning did not really work out. The hig
 
 I would call my approach a "Q-learning like approach", because it applies the idea of discounted future rewards.
 
-The longer I watch the behaviour of the agent and its learning success  or mis-successes I realize that there is a very fragile inter relationship between chosing:
-* Q Values
-* Discount rate
-*
+The longer I watch the behaviour of the agent and its learning success  or mis-successes I realize that there is a very fragile equilibrium/relationship between choosing:
+* Q Values (e.g. range from -2.1 to ~ 15)
+* Discount rate (e.g. 0.9)
+* Sampling fraction (0.9)
+* Self-learning vs. batch learning
+
+The easiest to see is the relationship between discount rate and sampling fraction. If you would only sample randomly then your game data would hardly contain any high QQ-values, because you "destroy" these long runs by your random behaviour (e.g. killing yourself).
+
+The interplay of the Q-values with the discount rate is more subtle. The higher the discount rate becomes the less pronounced will be differences between bad and good moves, because the variance rises to a degree where you do not notice the difference that single moves make to the long run QQ value any longer. There will be too much noise to notice the signal. If one were to increase the discount rate you would also need to amplify the signal.
+
+The self-learning vs. batch learning issue is also falling into this category. An agent needs to learn on its own values to discourage bad moves and encourage good moves it makes. This is also related to the sampling fraction. The agent needs to often do what it thinks is best to get enough dis-encouragement in cases where this move is actually bad rather than good as the agent thought. Only many data-sets showing the badness of this move will change the behaviour of the agent. Similarly good moves need to be encouraged often, e.g. relying on the maximum selection strategy. If you would sample too much a QQ-value might end-up as low, not because the predicted move was bad, but because you did something else (an inferior move) at a later move (e.g. at T+1, T+2, T+3, ...) that destroyed its value. And all of that is also interlinked with the discount rate, because the higher the discount rater the more the long run behaviour counts into the QQ-values.
 
 # Frameworks
 
@@ -103,3 +110,17 @@ I then looked into other directions and made [my own experiments](https://github
 I finally ended up picking mxnet, because it combines the ease of debugging by using the "un-hybridized" gluon interface, with the top speed of "hybridizing" the gluon models. In addition I very much like its "fine-grained composable abstractions" approach, where you can tweak every aspect of it, while still not needing to reinvent the wheel at every turn. If you are used to using keras then keras-mxnet is a drop-in replacement. I finally decided to go with the raw gluon interface to mxnet. Also from a memory consuption perspective mxnet is top notch and uses only small fractions of your GPU memory. I have to say, after my experiences in this project, I have become a fan of mxnet and do not need to look and further.
 
 Also the documentation is top notch, as there is an open book describing gluon in detail: [Dive into Deep Learning](https://d2l.ai/). There is also a [PDF](https://en.d2l.ai/d2l-en.pdf) version of it.
+
+# Further ideas
+
+I have many further ideas, but my "time budget" for this project is running out.
+
+My main improvement would go into using multi output predictions for having one prediction focusing on goodness and one prediction focusing on avoiding badness.
+
+I was thinking of using a single CNN for detecting the features of the arena that are relevant in the game and putting two prediction "heads" on top of it as described here: [Keras: Multiple outputs and multiple losses](https://www.pyimagesearch.com/2018/06/04/keras-multiple-outputs-and-multiple-losses/). The idea would be to predict on the one hand side QQ-values (the max goodness you aim for) and on the other side a Time-To-Live (TTL) as counted from the end of the game (the badness you try to avoid). A TTL of 0 would mean that you die in that move. A TTL of 1 would mean that you die in 1 move ... and so on. Most likely you would cap the TTL at 5 or so and then normalize it between [0.0 and 1.0], because beyond 5 moves you anyway cannot say much. In order to make multi-output predictions work you would also need to make sure that the QQ value range is also between [0.0 and 1.0] by for example using the [logistic function](https://en.wikipedia.org/wiki/Logistic_function).
+
+My expectation around such an approach and change in the model architecture would be that learning in the CNN should be faster, as the same features that contribute to good and bad QQ-values should also contribute to good and bad TTL values.
+
+Prediction would then work by using TTL as an "inhibitor", e.g. do not take into consideration moves where TTL is too low (e.g. below 0.1/0.2 or so), and using the QQ-values as a goal, e.g. do what is most rewarding.
+
+I would also hope that the dual prediction would help to get sharper predictions for QQ for high QQ values and for TTL for low TTL values. This would take some pressure off predicting low QQ values correctly, so that more "neurons" can be used to predict the high QQ values correctly.
