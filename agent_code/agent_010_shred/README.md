@@ -1,6 +1,19 @@
 
 # agent_010_shred
 
+## Set-up
+
+Use the scripts in the `conda_environment` folder to install and/or update the necessary packages:
+
+    ./create.sh
+
+The created conda environment is called `bomberman_rl` and can be activated via:
+
+    conda activate bomberman_rl
+    
+
+## Basic idea
+
 The basic idea behind this agent is that the complexity of a 15x15 bomberman game field should be comparable to the complexity of 28x28 [MNIST](https://en.wikipedia.org/wiki/MNIST_database) data-set. A good CNN that solves this problem is given here: [mnist-competition](https://github.com/kkweon/mnist-competition), which was the winning model in the [how-far-can-we-go-with-MNIST](https://github.com/hwalsuklee/how-far-can-we-go-with-MNIST) competition. I oriented myself along the simplest of them all, the vgg5 net, because there is anyway a lot of variance in predicting the quality of a move, e.g. you cannot expect too much accuracy in predicting the outcome of moves.
 
 The input data to the agent_010_shred model consists of:
@@ -115,6 +128,8 @@ Also the documentation is top notch, as there is an open book describing gluon i
 
 I have many further ideas, but my "time budget" for this project is running out.
 
+## Multi output predictions: (max goodness vs. minimum badness)
+
 My main improvement would go into using multi output predictions for having one prediction focusing on goodness and one prediction focusing on avoiding badness.
 
 I was thinking of using a single CNN for detecting the features of the arena that are relevant in the game and putting two prediction "heads" on top of it as described here: [Keras: Multiple outputs and multiple losses](https://www.pyimagesearch.com/2018/06/04/keras-multiple-outputs-and-multiple-losses/). The idea would be to predict on the one hand side QQ-values (the max goodness you aim for) and on the other side a Time-To-Live (TTL) as counted from the end of the game (the badness you try to avoid). A TTL of 0 would mean that you die in that move. A TTL of 1 would mean that you die in 1 move ... and so on. Most likely you would cap the TTL at 5 or so and then normalize it between [0.0 and 1.0], because beyond 5 moves you anyway cannot say much. In order to make multi-output predictions work you would also need to make sure that the QQ value range is also between [0.0 and 1.0] by for example using the [logistic function](https://en.wikipedia.org/wiki/Logistic_function).
@@ -124,3 +139,7 @@ My expectation around such an approach and change in the model architecture woul
 Prediction would then work by using TTL as an "inhibitor", e.g. do not take into consideration moves where TTL is too low (e.g. below 0.1/0.2 or so), and using the QQ-values as a goal, e.g. do what is most rewarding.
 
 I would also hope that the dual prediction would help to get sharper predictions for QQ for high QQ values and for TTL for low TTL values. This would take some pressure off predicting low QQ values correctly, so that more "neurons" can be used to predict the high QQ values correctly.
+
+## History as part of the regression input
+
+Another idea for improving the predictions would be to take the history for the last `N` moves into consideration for predicting the outcome. So rather than feeding 7 channels into the CNN you would feed `N` * 7 channels into the CNN. If history is to be taken then most likely at least the last 5 moves should be taken into account, so that putting a bomb and seeing its effect is part of the input state.
