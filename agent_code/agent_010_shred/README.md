@@ -18,6 +18,7 @@ The basic idea behind this agent is that the complexity of a 15x15 bomberman gam
 
 You can find a visualization of the network here: [0000-network-structure-visualization.ipynb](https://nbviewer.jupyter.org/github/cs224/bomberman_rl/blob/master/agent_code/agent_010_shred/0000-network-structure-visualization.ipynb?flush_cache=true).
 
+A video showing initial 60 moves of the agent is available on youtube: [Bomberman Reinforcement Learning: Replay 2019 03 12 08 05 16 video](https://youtu.be/8e_8lECOHp4). It is the red agent.
 
 The input data to the agent_010_shred model consists of:
 * one-hot encoding of the chosen direction ['A_WAIT', 'A_UP', 'A_LEFT', 'A_DOWN', 'A_RIGHT', 'A_BOMB']
