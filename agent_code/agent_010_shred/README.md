@@ -10,11 +10,14 @@ Use the scripts in the `conda_environment` folder to install and/or update the n
 The created conda environment is called `bomberman_rl` and can be activated via:
 
     conda activate bomberman_rl
-    
+
 
 ## Basic idea
 
 The basic idea behind this agent is that the complexity of a 15x15 bomberman game field should be comparable to the complexity of 28x28 [MNIST](https://en.wikipedia.org/wiki/MNIST_database) data-set. A good CNN that solves this problem is given here: [mnist-competition](https://github.com/kkweon/mnist-competition), which was the winning model in the [how-far-can-we-go-with-MNIST](https://github.com/hwalsuklee/how-far-can-we-go-with-MNIST) competition. I oriented myself along the simplest of them all, the vgg5 net, because there is anyway a lot of variance in predicting the quality of a move, e.g. you cannot expect too much accuracy in predicting the outcome of moves.
+
+You can find a visualization of the network here: [0000-network-structure-visualization.ipynb](https://nbviewer.jupyter.org/github/cs224/bomberman_rl/blob/master/agent_code/agent_010_shred/0000-network-structure-visualization.ipynb?flush_cache=true).
+
 
 The input data to the agent_010_shred model consists of:
 * one-hot encoding of the chosen direction ['A_WAIT', 'A_UP', 'A_LEFT', 'A_DOWN', 'A_RIGHT', 'A_BOMB']
