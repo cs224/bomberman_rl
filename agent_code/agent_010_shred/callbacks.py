@@ -10,6 +10,7 @@ import central_arena_view as cav
 from .model.model_base_mx import VGGPlusModel
 import mxnet as mx
 
+import pickle, time
 
 def setup(self):
     self.logger.debug('Successfully entered setup code')
@@ -20,6 +21,18 @@ def setup(self):
 
     self.m = VGGPlusModel(self.logger, auto_save=False)
     self.m.load()
+
+    # prevent initial slow move during the game
+    game_state_file_name = os.path.dirname(os.path.realpath(__file__)) + '/start-state.p'
+    gs = pickle.load(open(game_state_file_name, "rb"))
+    gs['self_score'] = (0, 0)
+
+    time1 = time.time()
+    Xdf, _ = self.m.get_transform().in_game_transform(gs)
+    pQQs = self.m.predict(Xdf)
+    time2 = time.time()
+    self.logger.debug('Initial warmup prediction took: {} seconds'.format(time2 -time1))
+
 
 def choice_max(self, pQQs):
     # max_pQQ = np.max(pQQs)
