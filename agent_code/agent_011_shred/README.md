@@ -8,6 +8,12 @@ The basic architecture is the same as for `agent_010_shred`, except that I made 
 
 You can see a visualization of the architecture here: [agent_011_shred/0000-network-structure-visualization.ipynb](https://nbviewer.jupyter.org/github/cs224/bomberman_rl/blob/master/agent_code/agent_011_shred/0000-network-structure-visualization.ipynb?flush_cache=true).
 
+# Video
+
+[Bomberman Reinforcement Learning: Replay 2019 03 19 07 57 59 video](https://youtu.be/bC2APj4xf_0)
+
+The yellow and green agents are the new `agent_011_shred` agents. The red one is `agent_010_shred` for comparison. There is also one `simple_agent` in the game for reference.
+
 # Problems
 
 While the performance of the agent is by now quite nice I run into problems during training. No matter what I do, e.g. which optimizer I use or which learning rate I configure, the training process runs now always into situations where it ends up delivering `NaN` values. I guess that there are some diverging gradients reached. I tried to also counteract this situation by replacing the `L2` loss by a `HuberLoss`, but this did also not help.
