@@ -125,14 +125,17 @@ class DataCollectionHelper():
                 continue
 
             if event == e.KILLED_SELF:
+                self.logger.debug('DataCollectionHelper(): callback02_process_events: received e.KILLED_SELF')
                 killed_self += 1
                 continue
 
             if event == e.INTERRUPTED:
-                penalty = penalty | 2 ** 1
+                penalty = penalty | 2 ** 0
                 continue
+
             if event == e.INVALID_ACTION:
-                penalty = penalty | 2 ** 2
+                self.logger.debug('DataCollectionHelper(): callback02_process_events: received penalty for e.INVALID_ACTION')
+                penalty = penalty | 2 ** 1
                 continue
 
         r = dict(crate_destroyed=crate_destroyed, coin_found=coin_found, coin_collected=coin_collected, opponent_eliminated=opponent_eliminated, killed_opponent=killed_opponent, got_killed=got_killed, killed_self=killed_self, penalty=penalty)
@@ -194,4 +197,3 @@ class DataCollectionHelper():
 
 def dch(logger, agent_id, game_run_id, file_name=None):
     return DataCollectionHelper(logger, agent_id, game_run_id, file_name=file_name)
-
