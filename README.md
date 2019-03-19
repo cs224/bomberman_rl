@@ -4,3 +4,8 @@ Setup for a project/competition amongst students to train a winning Reinforcemen
 # agent_010_shred
 
 Please see the details about agent_010_shred in its [README.md](https://github.com/cs224/bomberman_rl/blob/master/agent_code/agent_010_shred).
+
+# agent_011_shred
+
+Please see the details about agent_011_shred in its [README.md](https://github.com/cs224/bomberman_rl/blob/master/agent_code/agent_011_shred).
+
