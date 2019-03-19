@@ -1,6 +1,6 @@
 
-import collections, heapq, time, logging
-import numpy as np, pandas as pd, xarray as xr
+import collections, heapq, time, logging, math
+import numpy as np, scipy, pandas as pd, xarray as xr
 from settings import s
 import numba
 
@@ -25,6 +25,7 @@ class CentralArenaView():
         self.code_bomb_explosion = 50
 
         self.bomb_tmax           = s.bomb_timer + 1
+        self.explosion_tmax      = s.explosion_timer
 
         self.x_center = 14
         self.y_center = 14
@@ -619,6 +620,8 @@ class DFIDs:
     Q_SCORE               = 'QSC'
     Q                     = 'Q'
     QQ                    = 'QQ'
+    QQ_next_state_max     = 'QQNextStateMax'
+    QQ_SCORE              = 'QQSC'
     QQ_SCORE              = 'QQSC'
     TTL                   = 'TTL'
     S                     = 'S'
@@ -654,7 +657,7 @@ class PandasAugmentedCentralArenaView(AugmentedCentralArenaView):
     auxiliary_variable3_columns = [DFIDs.game_count, DFIDs.game_step]
     rotation_variable_columns = [DFIDs.ROTATION]
     sort_columns = auxiliary_variable1_columns + auxiliary_variable2_columns + auxiliary_variable3_columns + rotation_variable_columns
-    prediction_variable_columns = [DFIDs.Pred_dt]  # DFIDs.QQ_Pred, DFIDs.QQ_Pred_Max, DFIDs.QQSC_Pred, DFIDs.TTL_Pred, DFIDs.S_Pred, DFIDs.W_Pred,
+    prediction_variable_columns = [DFIDs.Pred_dt, DFIDs.QQ_Pred_Max]  # DFIDs.QQ_Pred, DFIDs.QQ_Pred_Max, DFIDs.QQSC_Pred, DFIDs.TTL_Pred, DFIDs.S_Pred, DFIDs.W_Pred,
     q_variable_columns = [DFIDs.Q_CRATE_DESTROYED, DFIDs.Q_COIN_FOUND, DFIDs.Q_COIN_COLLECTED, DFIDs.Q_OPPONENT_ELIMINATED, DFIDs.Q_KILLED_OPPONENT, DFIDs.Q_GOT_KILLED, DFIDs.Q_KILLED_SELF, DFIDs.Q_PENALTY]
     q_score_columns = [DFIDs.Q_SCORE]
     target_variable_columns = [DFIDs.S, DFIDs.W]
@@ -692,7 +695,7 @@ class PandasAugmentedCentralArenaView(AugmentedCentralArenaView):
         # XXX originally I thought I'd add the predicted values to the recorded fields during game execution, but this is just bloating the data file
         #     you can always generate these values via running your model on the input data.
         self.prediction_variable_columns       = PandasAugmentedCentralArenaView.prediction_variable_columns
-        self.prediction_variable_data          = np.array([0.0] * len(self.prediction_variable_columns), dtype=np.float32)
+        self.prediction_variable_data          = np.array([np.nan] * len(self.prediction_variable_columns), dtype=np.float32)
 
         self.q_variable_columns                = PandasAugmentedCentralArenaView.q_variable_columns
         self.q_variable_data                   = np.array([0] * 8, dtype=np.byte)
@@ -747,6 +750,14 @@ class PandasAugmentedCentralArenaView(AugmentedCentralArenaView):
 
     def set_q_score(self, s):
         self.q_score_data[0] = s
+
+    #Pred_dt
+    def set_pred_dt(self, dt):
+        self.prediction_variable_data[0] = dt
+
+    #QQ_Pred_Max
+    def set_qq_pred_max(self, qqpm):
+        self.prediction_variable_data[1] = qqpm
 
     def set_action(self, a):
         direction = -1
@@ -999,19 +1010,21 @@ class FeatureSelectionTransformation0():
     w_wasted_move_qq      = PACAV.bomb_tmax * 1.0 # 3.0
 
     def __init__(self, in_df, size=5, discount_rate=0.90):
+        self.discount_rate = discount_rate
+        self.size  = size
+        self.reverse_dmap = dict([(value, key) for key, value in PACAV.dmap.items()])
+        if in_df is None:
+            return
         self.in_df = in_df.copy()
 
         if DFIDs.ROTATION not in list(self.in_df.columns):
             self.in_df[DFIDs.ROTATION] = ''
             self.in_df = self.in_df[PACAV.df_columns]
 
-        self.size  = size
         #         self.df_columns = self.auxiliary_variable1_columns + self.auxiliary_variable2_columns + self.auxiliary_variable3_columns + self.q_variable_columns + self.q_score_columns +\
         #                           self.target_variable_columns + self.direction_variable_columns + self.nearest_other_agent_info_columns + self.nearest_coin_info_columns + self.nearest_crate_info_columns +
         #                           self.mid_of_map_info_columns + self.central_arena_view_columns
-        self.discount_rate = discount_rate
 
-        self.reverse_dmap = dict([(value, key) for key, value in PACAV.dmap.items()])
 
         # FeatureSelectionTransformation0.w_wasted_move_qq = self.w_wasted_move_qq
 
@@ -1066,6 +1079,14 @@ class FeatureSelectionTransformation0():
         r[DFIDs.QQ_SCORE] = qqs
         return r
 
+    def w_got_killed_fn(self):
+        w_step_survived = self.w_step_survived()
+        return -3.0 * w_step_survived
+
+    def w_killed_self_fn(self):
+        w_step_survived = self.w_step_survived()
+        return -1.0 * (PACAV.bomb_tmax + 2) * w_step_survived
+
     def calculate_q(self, ldf):
         crate_destroyed     = ldf[DFIDs.Q_CRATE_DESTROYED]
         coin_found          = ldf[DFIDs.Q_COIN_FOUND]
@@ -1074,7 +1095,7 @@ class FeatureSelectionTransformation0():
         killed_opponent     = ldf[DFIDs.Q_KILLED_OPPONENT]
         got_killed          = ldf[DFIDs.Q_GOT_KILLED]
         killed_self         = ldf[DFIDs.Q_KILLED_SELF]
-        # XXX on purpose not inlcuding Q_PENALTY
+        penalty             = ldf[DFIDs.Q_PENALTY] > 1
 
         # dangerous, because the series below are np.byte!
         w_step_survived       = self.w_step_survived() # FeatureSelectionTransformation0.w_step_survived
@@ -1085,9 +1106,9 @@ class FeatureSelectionTransformation0():
         w_killed_opponent     = FeatureSelectionTransformation0.w_killed_opponent
         # w_got_killed          = FeatureSelectionTransformation0.w_got_killed
         # w_got_killed          = -0.6 # -3.0 * w_step_survived
-        w_got_killed          = -3.0 * w_step_survived
+        w_got_killed          = self.w_got_killed_fn() # -3.0 * w_step_survived
         # w_killed_self         = -1.5 # -1.0 * (PACAV.bomb_tmax + 2) * w_step_survived
-        w_killed_self         = -1.0 * (PACAV.bomb_tmax + 2) * w_step_survived
+        w_killed_self         = self.w_killed_self_fn()# -1.0 * (PACAV.bomb_tmax + 2) * w_step_survived
 
         idx = ldf.index
         # if got_killed / killed_self is not the last frame then something is wrong
@@ -1113,12 +1134,16 @@ class FeatureSelectionTransformation0():
         q.loc[~idx_got_killed] = ds_step_survived + w_crate_destroyed * crate_destroyed[~idx_got_killed] + w_coin_found * coin_found[~idx_got_killed] + w_coin_collected * coin_collected[~idx_got_killed] + \
                                  w_opponent_eliminated * opponent_eliminated[~idx_got_killed] + w_killed_opponent * killed_opponent[~idx_got_killed]
 
+        q.loc[penalty]         = w_killed_self
+
         qq = self.calculate_qq(q)
 
         # log.debug('calculate_q: w_step_survived: {}, w_killed_self: {}, w_got_killed: {}, w_crate_destroyed: {}, w_coin_found: {}, w_coin_collected: {}, w_opponent_eliminated: {}, w_killed_opponent: {}, '.format(w_step_survived, w_killed_self, w_got_killed, w_crate_destroyed, w_coin_found, w_coin_collected, w_opponent_eliminated, w_killed_opponent))
 
         r = q.to_frame()
         r[DFIDs.QQ] = qq
+
+        r[DFIDs.QQ_next_state_max] = np.concatenate([ldf[DFIDs.QQ_Pred_Max].iloc[1:], np.array([0.0])], axis=0)
 
         return r
 
@@ -1220,14 +1245,14 @@ class FeatureSelectionTransformation0():
 
         return r
 
-    def transform(self):
+    def transform(self, correct_survival_qq_next_state_max=True):
         ldf_auxiliary_variable1     = self.select(PACAV.auxiliary_variable1_columns)
         ldf_auxiliary_variable2     = self.select(PACAV.auxiliary_variable2_columns)
         ldf_auxiliary_variable3     = self.select(PACAV.auxiliary_variable3_columns)
 
         ldf_rotation                = self.select(PACAV.rotation_variable_columns) # pd.DataFrame('', index=self.in_df.index, columns=[DFIDs.ROTATION])
 
-        ldf_q_variable = self.calculate_q(self.select(PACAV.q_variable_columns + ['D', 'A']))
+        ldf_q_variable = self.calculate_q(self.select(PACAV.q_variable_columns + ['D', 'A', DFIDs.QQ_Pred_Max]))
 
         ldf_q_score    = self.calculate_qqs(self.select(PACAV.q_score_columns))
 
@@ -1251,6 +1276,10 @@ class FeatureSelectionTransformation0():
         ldf = pd.concat([ldf_auxiliary_variable1, ldf_auxiliary_variable2, ldf_auxiliary_variable3, ldf_rotation, ldf_q_variable, ldf_q_score,
                          ldf_target_variable, ldf_ttl, ldf_one_hot_action, ldf_nearest_other_agent_info, ldf_nearest_coin_info, ldf_nearest_crate_info, ldf_mid_of_map_info,
                          ldf_central_arena_view_offset, ldf_central_arena_view], axis=1)
+
+        # if agent survived until the end you have to drop the last row of the dataframe or else the results will be distorted, because the QQNextStateMax will be 0, which is wrong
+        if correct_survival_qq_next_state_max and ldf.iloc[-1,:][DFIDs.S]:
+            return ldf.iloc[:-1,:]
 
         return ldf
 
@@ -1939,6 +1968,7 @@ class FeatureSelectionTransformationNCHW():
         return PACAV.is_code_p(xin.loc[dict(channel='origin')].values, code)
 
     def bomb_time(self, xin):
+        xin_ = xin
         xin = xin.loc[dict(channel='origin')].values
 
         idx1 = xin >= PACAV.code_bomb_base
@@ -1952,6 +1982,12 @@ class FeatureSelectionTransformationNCHW():
         r[idx1 & idx2] = t[idx1 & idx2]
         r = r / PACAV.bomb_tmax
 
+        r = 1.0 - r
+
+        xin = xin_.loc[dict(channel='explosions')].values
+        idx = xin > 0.0
+        r[idx] = 1.0 + xin[idx]
+
         return r
 
     def explosion_time(self, xin):
@@ -1960,19 +1996,29 @@ class FeatureSelectionTransformationNCHW():
         idx = xin >= PACAV.code_bomb_explosion
 
         t = xin - PACAV.code_bomb_explosion + 1
-
         # r = np.where(idx1 & idx2)
 
         r = np.zeros(xin.shape)
+
         r[idx] = t[idx]
 
         r = r / 2.0
 
         return r
 
-    def transform(self):
+    def transform(self, increase_variance=False, match_low_and_high=False, filter_base_channel=True):
         # bt_df = self.base_transform.transform()
-        bt_df = self.bt_df
+        if 'QQ' in list(self.bt_df.columns):
+            if match_low_and_high:
+                qqt = QQTargetTransformationSpreadAndLimit(self.bt_df)
+                bt_df = qqt.match_low_and_high()
+            elif increase_variance:
+                qqt = QQTargetTransformationSpreadAndLimit(self.bt_df)
+                bt_df = qqt.transform()
+            else:
+                bt_df = self.bt_df
+        else:
+            bt_df = self.bt_df
 
         # base_columns = [c for c in bt_df.columns if not c.startswith('')]
         transformation_fields, breadth = TC.get_columns_and_breadth(bt_df.columns)
@@ -2008,15 +2054,97 @@ class FeatureSelectionTransformationNCHW():
         cav_array.loc[dict(channel='agents')] = self.is_code(cav_array, PACAV.code_other_agent)
         cav_array.loc[dict(channel='bombs')] = self.is_code(cav_array, PACAV.code_bomb)
 
+        cav_array.loc[dict(channel='explosions')] = self.explosion_time(cav_array)
         cav_array.loc[dict(channel='btimes')] = self.bomb_time(cav_array)
 
-        cav_array.loc[dict(channel='explosions')] = self.explosion_time(cav_array)
 
-        channels = FeatureSelectionTransformationNCHW.channels[1:]
-        cav_array = cav_array.loc[dict(channel=channels)]
+        if filter_base_channel:
+            channels = FeatureSelectionTransformationNCHW.channels[1:]
+            cav_array = cav_array.loc[dict(channel=channels)]
 
         l_xds = xr.Dataset()
         l_xds['base'] = base_array
         l_xds['cav'] = cav_array
 
         return l_xds # base_array, cav_array
+
+None_FT0 = FeatureSelectionTransformation0(None)
+
+self_kill_series    = np.array([None_FT0.w_step_survived()] * PACAV.bomb_tmax + [None_FT0.w_killed_self_fn()])
+self_kill_series_qq = np.zeros_like(self_kill_series)
+discount(self_kill_series, self_kill_series_qq, discount_rate=None_FT0.discount_rate)
+wrong_bomb_qq = self_kill_series_qq[0]
+wrong_bomb_qq_abs = math.fabs(wrong_bomb_qq)
+wrong_bomb_qq_abs
+QQTargetTransformationSpreadAndLimit_negative_value_multiplier = np.arctanh(0.6) / wrong_bomb_qq_abs
+
+
+class QQTargetTransformationSpreadAndLimit():
+
+    def __init__(self, bt_df):
+        self.bt_df = bt_df.copy()
+        self.long_run_step_qq_target = 3.0
+
+
+    def transform(self):
+        log.debug('QQTargetTransformationSpreadAndLimit.transform(): len(self.bt_df): {}'.format(len(self.bt_df)))
+        ldf = self.bt_df
+
+        idx_very_low = (ldf.QQ < -2.1) & (ldf.TTL <= 6)
+        idx_low      = (ldf.QQ <  0.0) & (ldf.TTL <= 6) & ~idx_very_low
+        idx_high     = ldf.QQ > self.long_run_step_qq_target
+        idx_middle   = (~idx_low) & (~idx_high) & (~idx_very_low)
+
+        l1 = len(idx_low[idx_low])
+        l2 = len(idx_high[idx_high])
+        log.debug('QQTargetTransformationSpreadAndLimit.transform(): len(idx_low): {}, len(idx_high): {}'.format(l1, l2))
+
+        min_qq_ = float(ldf.QQ.min())
+        min_qq_abs = math.fabs(min_qq_)
+
+        min_qq = -5.0
+        max_qq =  6.0
+
+        ldf.loc[idx_very_low, 'QQ'] = min_qq
+        # ldf.loc[idx_low     , 'QQ'] = (10.0/min_qq_abs) * ldf.QQ.loc[idx_low]
+        ldf.loc[idx_low     , 'QQ'] =  -1.0 * min_qq * np.tanh(QQTargetTransformationSpreadAndLimit_negative_value_multiplier * ldf.QQ.loc[idx_low])
+
+        ldf.loc[idx_middle  , 'QQ'] = (1.0/self.long_run_step_qq_target) * ldf.QQ.loc[idx_middle]
+
+        ldf.loc[idx_high    , 'QQ'] = 1.0 + (max_qq - 1.0) * 2.0 * (scipy.special.expit(ldf.QQ.loc[idx_high] - self.long_run_step_qq_target) - 0.5)
+
+        return ldf
+
+    def match_low_and_high(self):
+        ldf = self.transform()
+
+        idx_low  = (ldf.QQ < 0.0) & (ldf.TTL <= 6)
+        l1 = len(idx_low[idx_low])
+
+        # this 3.0 is not the same as the long_run_step_qq_target, as the previous transformation transformed that to 1.0
+        # in order to have a relevant gap between low and high values I chose 3.0 as the cut off for high values
+        idx_high = ldf.QQ > 3.0
+        l2 = len(idx_high[idx_high])
+        log.debug('QQTargetTransformationSpreadAndLimit.match_low_and_high(): len(idx_low): {}, len(idx_high): {}'.format(l1, l2))
+        if l1 < 2000 or l2 < 2000:
+            log.warning('QQTargetTransformationSpreadAndLimit.match_low_and_high(): not matching, because either l1 or l2 are below the limit of 2000: len(idx_low): {}, len(idx_high): {}'.format(l1, l2))
+            return ldf
+
+        if l1 < l2:
+            ldf_few  = ldf.loc[idx_low]
+            ldf_many = ldf.loc[idx_high]
+            l = l1
+        else:
+            ldf_few  = ldf.loc[idx_high]
+            ldf_many = ldf.loc[idx_low]
+            l = l2
+
+        selected_indices = np.random.permutation(np.arange(l2))[:l]
+        ldf_many_selected = ldf_many.iloc[selected_indices]
+
+        rdf = pd.concat([ldf_few, ldf_many_selected]) # .reset_index(drop=True)
+        shuffle_indices = np.random.permutation(np.arange(len(rdf)))
+        rdf = rdf.iloc[shuffle_indices].reset_index(drop=True)
+
+        log.debug('QQTargetTransformationSpreadAndLimit.match_low_and_high(): len(rdf): {}'.format(len(rdf)))
+        return rdf
