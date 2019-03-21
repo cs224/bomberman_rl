@@ -173,7 +173,17 @@ def get_model_load_path(name, suffix=DEFAULT_MODEL_SUFFIX, selected_id=None, lat
 
     model_options = []
     for g in glob_list:
-        r = re.search(r'^.*/(\d+)-(.*?)-(.*?)-symbol\.json$', g)
+        path_separator = '/'
+        if os.sep == '/':
+            path_separator = '/'
+        elif os.sep == '\\':
+            path_separator = '\\\\'
+        else:
+            raise Exception('Unknown path separator string: {}'.format(os.sep))
+
+        pattern = r'^.*{}(\d+)-(.*?)-(.*?)-symbol\.json$'.format(path_separator)
+
+        r = re.search(pattern, g)
         if r:
             id         = r.group(1)
             agent_name = r.group(2)
