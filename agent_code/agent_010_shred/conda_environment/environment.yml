@@ -4,7 +4,7 @@ channels:
 dependencies:
   - python=3.6
   - pip
-  - numpy=1.15.4
+  - numpy=1.16.2
   - pytables=3.4.4
   - h5py=2.9.0
   - scipy=1.2.1
