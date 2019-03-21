@@ -11,7 +11,7 @@ import numpy as np, pandas as pd, matplotlib.pyplot as plt
 import sklearn, sklearn.pipeline, sklearn.model_selection, sklearn.preprocessing
 import mxnet as mx
 import central_arena_view as cav
-import gluon_wrappers as gw
+# import gluon_wrappers as gw
 # import keras
 # from keras import backend as K
 
@@ -564,10 +564,10 @@ class VGGPlusModel(BaseModel):
         log.debug('Python       : {}'.format(sys.version))
         log.debug('MXNet        : {}'.format(mx.__version__))
         log.debug('Numpy        : {}'.format(np.__version__))
-        log.debug('GPU          : {}'.format(gw.get_gpu_name()))
+        # log.debug('GPU          : {}'.format(gw.get_gpu_name()))
         log.debug('CPU cores    : {}'.format(multiprocessing.cpu_count()))
-        log.debug(gw.get_cuda_version())
-        log.debug('CuDNN Version: {}'.format(gw.get_cudnn_version()))
+        # log.debug(gw.get_cuda_version())
+        # log.debug('CuDNN Version: {}'.format(gw.get_cudnn_version()))
 
 
     def init_progress_metric_df(self):
